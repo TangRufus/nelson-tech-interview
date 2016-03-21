@@ -157,7 +157,7 @@ Late submission not accepted (github timestamp)
 # Common Mistakes
 
 - Public users can't login via Facebook
-  * Make sure you Facebook **gone live**
+  * Make sure your Facebook app has **gone live**
 - Show `Unknown Errors` to user
   * React to errors
 - `Loading...` forever
