@@ -1,25 +1,31 @@
 # Mini-twitter
 
 Make an iOS or android app.
-You can use any frameworks or languages.
+
+Unless specified, make your own decisions. If it is important, tell us during submission.
 
 ## 1. Login
-Login handled by [auth0](https://auth0.com/)
-Save user's JWT token in app.
+
+Login handled by [auth0](https://auth0.com/) (See Authentication)
+
+Use Facebook connect only.
+
+- Save user's access token (JWT) in app.
 
 ## 2. Ask Users for API endpoint URL
-Save this endpoint URL in app.
+
+- Save this endpoint URL in app.
+
 Example: `https://www.example.com/tweets/`
 
-Example: If endpoint URL is `https://www.example.com/tweets/`
-
 ## 3. All tweets
-Show all tweets returned by backend server.
-API endpoint `GET https://www.example.com/tweets/`
 
+- Show all tweets returned by backend server, in chronological order
 - Handle tweets refresh
 
-JSON Example: `GET https://www.example.com/tweets/`
+API endpoint `GET https://www.example.com/tweets/`
+
+Example:
 
 ```
 {
@@ -64,14 +70,16 @@ JSON Example: `GET https://www.example.com/tweets/`
 }
 ```
 
-## 4. Make a tweet
-Create a tweet.
-API endpoint `CREATE https://www.example.com/tweets/`
+## 4. Create a tweet
 
-- follows [jsonapi.org](http://jsonapi.org/) standard
-- handle errors
+- Follows [jsonapi.org](http://jsonapi.org/) standard
+- Handle errors
+  * For 422 errors, show server returned messages to users.
+  * For 401, 403 and 5xx errors, server returns headers only (no content). You have to show something meaningful to users.
 
-Error example:
+API Endpoint: `CREATE https://www.example.com/tweets/`
+
+Error 422 example:
 
 ```
 HTTP/1.1 422 Unprocessable Entity
@@ -82,48 +90,75 @@ HTTP/1.1 422 Unprocessable Entity
       "source": {
         "pointer": "/data/attributes/body"
       },
-      "detail": "Some error message server returns. Show this message to user"
+      "detail": "too long. Must less than 140 characters"
     }
   ]
 }
 ```
 
 ## 5. Logout
-Clear user jwt & endpoint URL
+
+- Clear saved user JWT
+- Clear saved endpoint URL
 
 # Authentication
 
 Use [auth0](https://auth0.com).
+
 Use Facebook connect only.
-Use auth0's JWT access token (sometimes called id_token). Refresh token is not required.
 
-Create your own auth0 account (free plan) and Facebook app.
+Use auth0's JWT access token (sometimes called `id_token`). Refresh token is not required.
 
-When making API calls, put the JWT token in header:
-`Authorization: bearer {ACCESS-TOKEN}`
-
-For 401 and 403 errors, server returns headers only, no content.
+Create your own auth0 account (**free plan**) and Facebook app.
 
 # API Backend
 
-You *don't* have to implement this api server.
+You **don't** have to implement this API server.
 
 Your app needs to ask users for API endpoint URL.
 Example: `https://www.example.com/tweets/`
 
-This API is RESTful.
+This API backend:
 
-This server follows most of [jsonapi.org](http://jsonapi.org/) standard.
+- is RESTful
+- follows most of [jsonapi.org](http://jsonapi.org/) standard (see limitations)
+- responses to `HTTP GET` and `HTTP CREATE` only
+- requires bearer tokens (users' Auth0 JWT tokens) in header:
+  * e.g: `Authorization: bearer {ACCESS-TOKEN}`
+- no pagination
 
-This server responses to `HTTP GET` and `HTTP CREATE` only.
+## Limitations
 
-No pagination.
+This server use Ruby on Rails with active model serializers (AMS) gem.
 
-Limitation:
-This server use Ruby on Rails with active model serializers gem.
 AMS doesn't implement all jsonapi.org specification yet.
-https://github.com/rails-api/active_model_serializers/tree/master/docs/jsonapi
+Read: https://github.com/rails-api/active_model_serializers/tree/master/docs/jsonapi
 
 For 401, 403 and 5xx errors, server returns headers only, no content.
 
 Timeouts in 30 seconds.  
+
+# Submission
+
+- Source code
+- APK file if android app
+- Auth0 client id
+- Auth0 client secret
+- Example payload of:
+  * Create a tweet
+- Important decisions made
+
+Make pull request to this repo
+
+Deadline: Ask Jonathon
+
+Late submission not accepted (github timestamp)
+
+# Common Mistakes
+
+- Public users can't login via Facebook
+  * Make sure you Facebook **gone live**
+- Show `Unknown Errors` to user
+  * React to errors
+- `Loading...` forever
+  * Set timeouts to all API calls
