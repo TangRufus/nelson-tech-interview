@@ -127,7 +127,6 @@ public class ProfileActivity extends ActionBarActivity {
         editor.commit();
 
         client  = new AsyncHttpClient();
-
         app = (SampleApplication) getApplication();
 
 
@@ -299,7 +298,7 @@ public class ProfileActivity extends ActionBarActivity {
 
             @Override
             public void onFailure(int statusCode, cz.msebera.android.httpclient.Header[] headers, String responseString, Throwable throwable) {
-                showAlertDialog(ProfileActivity.this, "Refresh Failed");
+                setEndpointURL(ProfileActivity.this);
             }
 
             @Override
