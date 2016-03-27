@@ -4,7 +4,7 @@ package com.auth0.sample.client;
 import com.loopj.android.http.*;
 
 public class TweetClient  {
-    private static final String BASE_URL = "http://localhost:3001/";
+    private static final String BASE_URL = "http://www.example.com/tweets/";
 
     private static AsyncHttpClient client = new AsyncHttpClient();
 

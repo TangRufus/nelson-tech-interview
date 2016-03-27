@@ -37,6 +37,7 @@ import android.graphics.BitmapFactory;
 import android.media.Image;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
 import android.support.design.widget.NavigationView;
 import android.support.v4.widget.DrawerLayout;
 import android.support.v7.app.ActionBar;
@@ -49,12 +50,16 @@ import android.util.Log;
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.auth0.core.Token;
 import com.auth0.core.UserProfile;
 import com.auth0.lock.Lock;
+import com.auth0.sample.client.TweetClient;
 import com.auth0.sample.model.Tweet;
 import com.flaviofaria.kenburnsview.KenBurnsView;
 import com.loopj.android.http.AsyncHttpClient;
@@ -65,11 +70,14 @@ import com.loopj.android.http.RequestParams;
 import com.nostra13.universalimageloader.core.ImageLoader;
 
 import org.apache.http.Header;
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
+import org.w3c.dom.Text;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashMap;
 
 
@@ -78,7 +86,9 @@ public class ProfileActivity extends ActionBarActivity {
     private static final String SAMPLE_API_URL = "http://localhost:3001/secured/ping";
     private static final String TAG = ProfileActivity.class.getName();
 
-    private AsyncHttpClient client;
+    private SharedPreferences shares;
+    private SharedPreferences.Editor editor;
+
     private SampleApplication app;
     private UserProfile profile;
     private NavigationView navigationView;
@@ -88,30 +98,48 @@ public class ProfileActivity extends ActionBarActivity {
     private ImageView proPic;
     private TextView username;
     private TextView email;
+    private TextView create;
     private boolean nav = false;
     private RecyclerView mRecyclerView;
     private ArrayList<Tweet> items;
     private TweetAdapter mAdapter;
+    private AsyncHttpClient client;
+    private Token access_token;
+    private boolean refresh = false;
+
+    private Handler refresh_handler;
+    private Runnable refresh_runnable;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_profile);
 
+        shares = getSharedPreferences("USER", 0);
 
-
+        editor = shares.edit();
 
         profile = getIntent().getParcelableExtra(Lock.AUTHENTICATION_ACTION_PROFILE_PARAMETER);
 
+        access_token = getIntent().getParcelableExtra(Lock.AUTHENTICATION_ACTION_TOKEN_PARAMETER);
+        Log.e("Access_Token", access_token.getAccessToken());
+        editor.putString("ACCESS_TOKEN", access_token.getAccessToken());
+        editor.commit();
 
-
-        Log.e("Access_Token", profile.getExtraInfo().toString());
+        client  = new AsyncHttpClient();
 
         app = (SampleApplication) getApplication();
 
-        client = new AsyncHttpClient();
 
         toolbar = (Toolbar) findViewById(R.id.toolbar);
+
+        create = (TextView) toolbar.findViewById(R.id.create_tweet);
+        create.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                createTweet(ProfileActivity.this);
+            }
+        });
 
         navigationView = (NavigationView) findViewById(R.id.navigation_view);
 
@@ -143,6 +171,7 @@ public class ProfileActivity extends ActionBarActivity {
         });
         */
         username.setText(profile.getName());
+
         if (profile.getPictureURL() != null) {
             ImageLoader.getInstance().displayImage(profile.getPictureURL(), proPic);
         }
@@ -171,6 +200,7 @@ public class ProfileActivity extends ActionBarActivity {
                 //Check to see which item was being clicked and perform appropriate action
                 switch (menuItem.getItemId()) {
                     case R.id.log_out:
+                        editor.remove("ENDPOINT_URL").remove("ACCESS_TOKEN").commit();
                         Intent intent = getApplicationContext().getPackageManager()
                                 .getLaunchIntentForPackage(getApplicationContext().getPackageName());
                         intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
@@ -245,30 +275,124 @@ public class ProfileActivity extends ActionBarActivity {
         // specify an adapter (see also next example)
         mAdapter = new TweetAdapter(items);
         mRecyclerView.setAdapter(mAdapter);
+
+        setEndpointURL(this);
+
+        refresh_handler = new Handler();
+        refresh_runnable = new Runnable() {
+            @Override
+            public void run() {
+                if(!refresh) {
+                    ProfileActivity.this.get();
+                    refresh_handler.postDelayed(this, 50000);
+                    refresh = true;
+                }
+            }
+        };
+
+
+
     }
 
-    private void callAPI() {
-        client.get(this, SAMPLE_API_URL, new AsyncHttpResponseHandler() {
+    private void get() {
+        client.get(shares.getString("ENDPOINT_URL", "ERROR"), new RequestParams(), new JsonHttpResponseHandler() {
+
             @Override
-            public void onSuccess(int statusCode, cz.msebera.android.httpclient.Header[] headers, byte[] responseBody) {
-                Toast.makeText(ProfileActivity.this, profile.getEmail(), Toast.LENGTH_SHORT).show();
-                Log.v(TAG, "We got the secured data successfully");
-                showAlertDialog(ProfileActivity.this, "We got the secured data successfully");
+            public void onFailure(int statusCode, cz.msebera.android.httpclient.Header[] headers, String responseString, Throwable throwable) {
+                showAlertDialog(ProfileActivity.this, "Refresh Failed");
             }
 
             @Override
-            public void onFailure(int statusCode, cz.msebera.android.httpclient.Header[] headers, byte[] responseBody, Throwable error) {
-                Log.e(TAG, "Failed to contact API", error);
-                showAlertDialog(ProfileActivity.this, "Please download the API seed so that you can call it.");
+            public void onSuccess(int statusCode, cz.msebera.android.httpclient.Header[] headers, JSONObject response) {
+                items = new ArrayList<Tweet>();
+                try {
+                    JSONArray response_array = response.getJSONArray("data");
+                    for (int i = 0; i < response_array.length(); i++) {
+                        items.add(new Tweet(response_array.getJSONObject(i)));
+                    }
+
+                } catch (JSONException e) {
+                    Log.e("GET ERROR", e.toString());
+                }
+                mAdapter = new TweetAdapter(items);
+                mRecyclerView.setAdapter(mAdapter);
+            }
+
+
+        });
+    }
+
+    private void create() {
+
+        client.post("tweets/", new RequestParams(), new JsonHttpResponseHandler() {
+            @Override
+            public void onSuccess(int statusCode, cz.msebera.android.httpclient.Header[] headers, JSONObject response) {
+                items = new ArrayList<Tweet>();
+                try {
+                    JSONArray response_array = response.getJSONArray("data");
+                    for (int i = 0; i < response_array.length(); i++) {
+                        items.add(new Tweet(response_array.getJSONObject(i)));
+                    }
+
+                } catch (JSONException e) {
+                    Log.e("GET ERROR", e.toString());
+                }
+                mAdapter = new TweetAdapter(items);
+                mRecyclerView.setAdapter(mAdapter);
             }
         });
     }
 
-    public static AlertDialog showAlertDialog(Context context, String message) {
+
+    public AlertDialog showAlertDialog(Context context, String message) {
         AlertDialog.Builder builder = new AlertDialog.Builder(context);
+
+
         builder
                 .setMessage(message)
                 .setPositiveButton("OK", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        dialog.dismiss();
+                        refresh = false;
+                    }
+                });
+
+        return builder.show();
+    }
+
+    public AlertDialog createTweet(Context context) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(context);
+        final EditText input = new EditText(ProfileActivity.this);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(50,50,50,50);
+        input.setLayoutParams(lp);
+
+        builder
+                .setView(input)
+                .setTitle("Create A Tweet")
+                .setPositiveButton("Send", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        RequestParams params = new RequestParams();
+                        params.put("author", profile.getName());
+                        params.put("body", input.getText().toString());
+                        client.post(shares.getString("ENDPOINT_URL", "ERROR"), params, new JsonHttpResponseHandler() {
+                            @Override
+                            public void onSuccess(int statusCode, cz.msebera.android.httpclient.Header[] headers, JSONObject response) {
+                                Toast.makeText(ProfileActivity.this, "Created Tweet Successfully", Toast.LENGTH_SHORT).show();
+                            }
+
+                            @Override
+                            public void onFailure(int statusCode, cz.msebera.android.httpclient.Header[] headers, Throwable throwable, JSONObject errorResponse) {
+                                Toast.makeText(ProfileActivity.this, "Failed to Create Tweet", Toast.LENGTH_SHORT).show();
+                            }
+                        });
+                    }
+                })
+                .setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
                     @Override
                     public void onClick(DialogInterface dialog, int which) {
                         dialog.dismiss();
@@ -277,4 +401,34 @@ public class ProfileActivity extends ActionBarActivity {
 
         return builder.show();
     }
+
+    public AlertDialog setEndpointURL(Context context) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(context);
+        final EditText input = new EditText(ProfileActivity.this);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(50,50,50,50);
+        input.setLayoutParams(lp);
+
+        builder
+                .setView(input)
+                .setTitle("Set Endpoint URL")
+                .setPositiveButton("Set", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        if (input.getText().toString() != "") {
+                            editor.putString("ENDPOINT_URL", input.getText().toString());
+                            editor.commit();
+                            refresh_handler.postDelayed(refresh_runnable, 50000);
+                        } else {
+                            Toast.makeText(ProfileActivity.this, "Enter An Url", Toast.LENGTH_SHORT).show();
+                        }
+                    }
+                });
+
+
+        return builder.show();
+    }
+
 }
